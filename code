@@ -9,6 +9,7 @@ contract SimpleBank {
         uint balance;
         uint loanAmount;
         uint lastPaymentTimestamp;
+        uint pendingLoan;
     }
     
     mapping(address => Customer) public customers;
@@ -18,6 +19,7 @@ contract SimpleBank {
     event Withdrawal(address indexed customer, uint amount);
     event LoanRequested(address indexed customer, uint amount);
     event LoanRepaid(address indexed customer, uint amount, uint penaltyAmount);
+    event LoanSent(address indexed admin, address indexed customer, uint amount);
     
     constructor() {
         admins.push(msg.sender); // Deployer is the initial admin
@@ -71,7 +73,7 @@ contract SimpleBank {
     }
     
     function repayLoan(uint amount) public payable onlyExistingCustomer {
-    require(customers[msg.sender].loanAmount > 0, "No active loan");
+    require(customers[msg.sender].pendingLoan > 0, "No active loan");
     require(amount > 0 && amount <= customers[msg.sender].balance, "Invalid repayment amount");
 
     uint penaltyAmount = calculatePenalty(msg.sender);
@@ -79,10 +81,10 @@ contract SimpleBank {
 
     require(msg.value >= totalRepaymentAmount, "Insufficient ETH sent for repayment");
 
-    customers[msg.sender].loanAmount -= amount;
+    customers[msg.sender].pendingLoan -= amount * 1 ether;
     customers[msg.sender].balance -= totalRepaymentAmount;
 
-    if (customers[msg.sender].loanAmount == 0) {
+    if (customers[msg.sender].pendingLoan == 0) {
         customers[msg.sender].lastPaymentTimestamp = 0; // Reset last payment timestamp
     }
 
@@ -96,7 +98,7 @@ contract SimpleBank {
     }
     
     function calculatePenalty(address customer) private view returns (uint) {
-        if (customers[customer].loanAmount == 0) {
+        if (customers[customer].pendingLoan == 0) {
             return 0; // No penalty if no active loan
         }
         
@@ -104,10 +106,36 @@ contract SimpleBank {
         uint timeSinceLastPayment = block.timestamp - lastPayment;
         
         // Penalty calculation (for simplicity, penalty is 1% per day of delay)
-        uint penaltyAmount = (customers[customer].loanAmount * timeSinceLastPayment) / (100 * 1 days);
+        uint penaltyAmount = (customers[customer].pendingLoan * timeSinceLastPayment) / (100 * 1 days);
         
         return penaltyAmount;
     }
+
+    function sendLoan(address customer, uint amountInEth) public payable onlyAdmin {
+    require(customers[customer].exists, "Customer does not exist");
+    //require(customers[customer].loanAmount >= amountInEth * 1 ether, "Loan amount exceeds requested loan");
+    require(msg.value >= amountInEth * 1 ether, "Insufficient Ether sent for loan");
+
+    // Convert amountInEth to wei (1 ether = 1e18 wei)
+    uint amountInWei = amountInEth * 1 ether;
+
+    // Update pending loan amount for the customer
+    customers[customer].pendingLoan += amountInWei;
+
+    // Transfer Ether to the customer's address
+    payable(customer).transfer(amountInWei);
+
+    // Emit event to log the loan sent by admin
+    emit LoanSent(msg.sender, customer, amountInEth);
+
+    // Refund any excess Ether back to the admin
+    if (msg.value > amountInWei) {
+        uint excessAmount = msg.value - amountInWei;
+        payable(msg.sender).transfer(excessAmount);
+    }
+}
+
+
     
     function getBalance() public view onlyExistingCustomer returns (uint) {
         return customers[msg.sender].balance;
