@@ -78,7 +78,6 @@ contract SimpleBank {
 
     uint penaltyAmount = calculatePenalty(msg.sender);
     uint totalRepaymentAmount = amount + penaltyAmount;
-
     require(msg.value >= totalRepaymentAmount, "Insufficient ETH sent for repayment");
 
     customers[msg.sender].pendingLoan -= amount * 1 ether;
@@ -97,7 +96,7 @@ contract SimpleBank {
     emit LoanRepaid(msg.sender, amount, penaltyAmount);
     }
     
-    function calculatePenalty(address customer) private view returns (uint) {
+    function calculatePenalty(address customer) public view returns (uint) {
         if (customers[customer].pendingLoan == 0) {
             return 0; // No penalty if no active loan
         }
@@ -111,13 +110,10 @@ contract SimpleBank {
         return penaltyAmount;
     }
 
-    function sendLoan(address customer, uint amountInEth) public payable onlyAdmin {
+    function sendLoan(address customer, uint amountInWei) public payable onlyAdmin {
     require(customers[customer].exists, "Customer does not exist");
-    //require(customers[customer].loanAmount >= amountInEth * 1 ether, "Loan amount exceeds requested loan");
-    require(msg.value >= amountInEth * 1 ether, "Insufficient Ether sent for loan");
-
-    // Convert amountInEth to wei (1 ether = 1e18 wei)
-    uint amountInWei = amountInEth * 1 ether;
+    //require(customers[customer].loanAmount >= amountInWei, "Loan amount exceeds requested loan");
+    require(msg.value >= amountInWei, "Insufficient Ether sent for loan");
 
     // Update pending loan amount for the customer
     customers[customer].pendingLoan += amountInWei;
@@ -126,7 +122,7 @@ contract SimpleBank {
     payable(customer).transfer(amountInWei);
 
     // Emit event to log the loan sent by admin
-    emit LoanSent(msg.sender, customer, amountInEth);
+    emit LoanSent(msg.sender, customer, amountInWei);
 
     // Refund any excess Ether back to the admin
     if (msg.value > amountInWei) {
@@ -144,4 +140,5 @@ contract SimpleBank {
     function getLoanAmount() public view onlyExistingCustomer returns (uint) {
         return customers[msg.sender].loanAmount;
     }
+
 }
